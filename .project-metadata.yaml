@@ -1,0 +1,46 @@
+name: Hybrid Search with BM25 and VDBs for RAG
+description: "AMP for deploying Hybrid Search with BM25 and Vector Database with RAG in Cloudera AI"
+author: "Cloudera"
+date: "2025-2-28"
+specification_version: 1.0
+prototype_version: 1.0
+
+runtimes: 
+  - editor: JupyterLab
+    kernel: Python 3.10
+    edition: Nvidia GPU
+  
+tasks:
+  - type: create_job
+    name: Create Job to Download/Install Java and Solr
+    entity_label: install_dependencies
+    script: solr/01_install-java11_n_solr.py
+    short_summary: Create Job to Download/Install Java and Solr
+    kernel: python3
+    cpu: 2
+    memory: 4
+    environment:
+      TASK_TYPE: CREATE/RUN_JOB
+
+  - type: run_job
+    entity_label: install_dependencies
+    short_summary: Run Job to Download/Install Java and Solr
+
+  - type: start_application
+    name: Solr
+    subdomain: solr-app
+    script: solr/02_start-solr-application.py
+    short_summary: Create and start Solr
+    long_summary: Create and start frontend application. Remember to enable unauthenticated app access for external access to the UI.
+    cpu: 2
+    memory: 4
+    environment_variables:
+      TASK_TYPE: START_APPLICATION
+
+  - type: run_session
+    name: Install Dependencies
+    script: 1_session-install-deps/download_requirements.py
+    short_summary: Install Package Dependencies
+    kernel: python3
+    cpu: 2
+    memory: 16

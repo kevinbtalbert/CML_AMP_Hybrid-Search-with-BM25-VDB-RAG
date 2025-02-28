@@ -1,0 +1,19 @@
+name: Hybrid Search AMP
+
+entries:
+  - title: Hybrid Search with BM25 and VDBs for RAG
+    label: hybrid-search
+    short_description: |
+      AMP for deploying Hybrid Search with BM25 and Vector Database with RAG in Cloudera AI
+    long_description: |
+      AMP for deploying Hybrid Search with BM25 and Vector Database with RAG in Cloudera AI. By default, Solr 9.3.0 and Java 11.0.1 will be installed / used.
+    image_path: "https://raw.githubusercontent.com/kevinbtalbert/CML_AMP_Hybrid-Search-with-BM25-VDB-RAG/main/assets/amp-cover.png"
+    tags: 
+      - Hybrid Search
+      - BM25
+      - RAG
+      - Solr 9
+      - Vector DB
+    git_url: "https://github.com/kevinbtalbert/CML_AMP_Hybrid-Search-with-BM25-VDB-RAG.git"
+    is_prototype: true
+    
