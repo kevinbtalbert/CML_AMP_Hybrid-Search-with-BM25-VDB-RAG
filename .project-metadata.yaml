@@ -44,3 +44,49 @@ tasks:
     kernel: python3
     cpu: 2
     memory: 16
+
+  - type: run_session
+    name: Install Opensearch
+    script: opensearch/install_opensearch.py
+    short_summary: Install Opensearch
+    kernel: python3
+    cpu: 2
+    memory: 8
+
+  - type: start_application
+    name: Opensearch
+    subdomain: opensearch-app
+    script: opensearch/run_opensearch.py
+    short_summary: Start Opensearch
+    long_summary: Start opensearch frontend application. Remember to enable unauthenticated app access for external access to the UI.
+    cpu: 2
+    memory: 8
+    environment_variables:
+      TASK_TYPE: START_APPLICATION
+
+  - type: create_job
+    name: Ingest Docs from data directory
+    entity_label: ingest-docs
+    script: storedocs.py
+    arguments: data/
+    short_summary: Ingest Docs from data directory
+    cpu: 2
+    memory: 4
+    kernel: python3
+    environment:
+      TASK_TYPE: CREATE/RUN_JOB
+
+  - type: run_job
+    entity_label: ingest-docs
+    short_summary: Run Job to ingest docs to Solr and Opensearch
+
+  - type: start_application
+    name: Hybrid Search (Frontend)
+    subdomain: hybrid-search-app
+    script: opensearch/run_opensearch.py
+    short_summary: Start Django app frontend
+    long_summary: Start Django app frontend application. Remember to enable unauthenticated app access for external access to the UI.
+    cpu: 2
+    memory: 8
+    environment_variables:
+      TASK_TYPE: START_APPLICATION
