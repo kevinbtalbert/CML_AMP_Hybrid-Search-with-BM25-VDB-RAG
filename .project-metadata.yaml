@@ -64,6 +64,22 @@ tasks:
     environment_variables:
       TASK_TYPE: START_APPLICATION
 
+  - type: run_session
+    name: Setup environment variable configurations
+    script: 3_set_env_vars/execute-set-env-variables.py
+    short_summary: Setup environment variable configurations
+    kernel: python3
+    cpu: 2
+    memory: 2
+
+  - type: run_session
+    name: Create solr collections
+    script: solr/04_create_solr_collections.py
+    short_summary: Create solr collections
+    kernel: python3
+    cpu: 2
+    memory: 2
+
   - type: create_job
     name: Ingest Docs from data directory
     entity_label: ingest-docs

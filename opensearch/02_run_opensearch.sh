@@ -22,7 +22,7 @@ fi
 # export JAVA_VER="11.0.1"
 # export JAVA_HOME="/home/cdsw/solr-app/jdk-${JAVA_VER}"
 export JAVA_HOME="/home/cdsw/opensearch-app/opensearch-2.12.0/jdk"
-echo "$(${JAVA_HOME}/bin/java -version)"
+echo "Using JAVA: $(${JAVA_HOME}/bin/java -version)"
 
 # Kill any existing OpenSearch process if running
 if [[ -f "$PID_FILE" ]]; then

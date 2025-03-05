@@ -89,7 +89,7 @@ class RequestsOps():
         if self._req_session:
             self._req_session.close()
 
-    def requests_post(self, uri_type: typing.Literal["fulltext", "vec"], data: dict|str=None,
+    def requests_post(self, uri_type: typing.Literal["searchdocuments", "vec"], data: dict|str=None,
                      headers: dict=None, params: dict=None, verify: bool=False):
         """ TLS verify is set to False, set to true for certificate verification 
         uri_type = "fulltext" -> Solr Fulltext  or "vec" -> OpenSearch VectorDB 
@@ -101,7 +101,7 @@ class RequestsOps():
                 data = json.dumps(data)
             if not headers:
                 headers = {"Content-type": "application/json"}
-        if uri_type == "fulltext":
+        if uri_type == "searchdocuments":
             posturi = f"{random.choice(_FTBASE)}/{_FTINDEX}/{_FTPOST}"
             verify = verify or _FTTLSVERIFY
         elif uri_type == "vec":
@@ -116,29 +116,24 @@ class RequestsOps():
                                       verify=verify)
         return resp
 
-    def requests_get(self, uri_type: typing.Literal["fulltext", "vec"], data: dict|str=None,
-                     headers: dict=None, params: dict=None, verify: bool=False):
-        """ uri_type = "fulltext" -> Solr Fulltext  or "vec" -> OpenSearch VectorDB """
-        if data:
-            if isinstance(data, dict):
-                data = json.dumps(data)
-            if not headers:
-                headers = {"Content-type": "application/json"}
-        if uri_type == "fulltext":
+    def requests_get(self, uri_type: typing.Literal["searchdocuments", "vec"], params: dict=None, verify: bool=False):
+        """ URI type = 'fulltext' -> Solr, 'vec' -> OpenSearch """
+        if uri_type == "searchdocuments":
             geturi = f"{random.choice(_FTBASE)}/{_FTINDEX}/{_FTGET}"
             verify = verify or _FTTLSVERIFY
         elif uri_type == "vec":
             geturi = f"{random.choice(_VECBASE)}/{_VECINDEX}/{_VECGET}"
             verify = verify or _VECTLSVERIFY
+    
         if params:
-            # safe + because the field list is passed with + in Solr. e.g. field1+field2
-            geturi = f"{geturi}?{urlparse_encode(params, safe='+')}"
-        req = requests.Request('GET', geturi, data=data, headers=headers)
-        req_prepped = self._req_session.prepare_request(req)
-        resp = self._req_session.send(req_prepped,
-                                      timeout=self._get_timeout,
-                                      verify=verify)
+            # ✅ Fix encoding to handle special characters like ?
+            geturi = f"{geturi}?{urlparse_encode(params, safe=':+')}"
+    
+        _lgrdj.info(f"Making GET request: {geturi}")  # ✅ Log full URL
+        resp = self._req_session.get(geturi, timeout=self._get_timeout, verify=verify)
+    
         return resp
+
 
 
 class VectorEmbeddings():

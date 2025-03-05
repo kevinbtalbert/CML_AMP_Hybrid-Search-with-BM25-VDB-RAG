@@ -4,14 +4,16 @@
 # Copyright (c) 2025  Yogesh Rajashekharaiah
 # All Rights Reserved
 
-""" Document search single page Django app """
+""" Document search single-page Django app """
 
 import os
 import time
+import requests
 from datetime import datetime
 from collections import OrderedDict
 import markdown
 from humanize import precisedelta
+from urllib.parse import quote
 
 from django.conf import settings
 from django.urls import path
@@ -19,73 +21,65 @@ from django.shortcuts import render
 
 from coreutils import getlgr, RequestsOps, LMOps, VectorEmbeddings
 
+# Allow Django to run in async environments
+os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 
-def fmt_ftresults(results: str, fltr_inp: str) -> (list[tuple], int):
-    """ Formats BM25 search results for HTML display
-    results: full text index(Solr) results: json string
-    fltr_inp: user search term filtered with stop and question words
-    Returns: List[Tuple]: Tuple contains the filepath, sample search terms highlighted text
-    """
+# Configure logger
+_lgrdj = getlgr("searchdocsUI")
+
+# Solr configurations (ensure no trailing '/')
+_FTBASE = ["https://solr.ml-dbfc64d1-783.go01-dem.ylcu-atmi.cloudera.site/solr"]
+_FTINDEX = "searchdocuments"
+_FTGET = "select"
+
+def fmt_ftresults(results: dict, fltr_inp: str) -> (list[tuple], int):
+    """ Formats BM25 search results for HTML display """
     doclst = []
     doccntr = None
+
     for doccntr, item in enumerate(results["response"]["docs"], 1):
-        ## extract words around the search terms, ignore ?,.
-        # e.g. quality. or quality, or quality?
-        txtlst = item["doctext"].replace('?','').replace(',','').replace('.','').split()
+        # ✅ Convert list to string (if necessary)
+        doctext = item["doctext"]
+        if isinstance(doctext, list):
+            doctext = " ".join(doctext)  # Convert list to string
+
+        # ✅ Now apply `.replace()` safely
+        txtlst = doctext.replace('?', '').replace(',', '').replace('.', '').split()
 
         # NOT, AND, OR has special meaning in Solr search, remove them for the filtered text
         inpl = fltr_inp.replace("AND", '').replace("OR", '').replace("NOT", '')
 
-        # Remove " from the input query string e.g. searching for "all good work" -> next to each other
-        # remove anything after ~, e.g. "apache lucene"~5 means within 5 words of each other
-        inpl = inpl.replace('?','').replace(',','').replace('.','').replace('"','').lower().split('~')[0].split()
+        inpl = inpl.replace('?', '').replace(',', '').replace('.', '').replace('"', '').lower().split('~')[0].split()
+        indxs = [i for i, x in enumerate(txtlst) if x.lower() in inpl]
 
-        # Get the input search terms, indexes the terms in the received fulltext in sorted order
-        indxs = []
-        # Left strip +- from the input query string + -  has special meaning to must include/exclude the term
-        # L/R strip (), grouping clauses
-        for term in inpl:
-            indxs +=  [i for i, x in enumerate(txtlst) if x.lower()==term.lstrip('(').lstrip('+').lstrip('-').rstrip(')')]
-        indxs = list(OrderedDict.fromkeys(indxs))
-        maxind = len(txtlst) -1
-        #texts = []
-        txt = ''
-        # get 5 words before and after the search terms
-        # show ~100 words for each document
+        maxind = len(txtlst) - 1
+        txt = ""
+
         for cntr, ind in enumerate(indxs):
-            if (lft:=ind -5) <= 0:
-                lft = 0
-            if (rgt:=ind +5) > maxind:
-                rgt = maxind
-            try:
-                # Add emsp after each sentence chunk for visual separation
-                txt = f"{txt} {' '.join(txtlst[lft:rgt])} &emsp;"
-            except IndexError:
-                pass
+            lft = max(0, ind - 5)
+            rgt = min(maxind, ind + 5)
+            txt = f"{txt} {' '.join(txtlst[lft:rgt])} &emsp;"
+
             if cntr > 9:
                 txt = f"{txt} ..."
                 break
-        # If we are not able to get texts around the search terms, show few chars from the document
-        txt = txt or item["doctext"][:500]
+
+        txt = txt or doctext[:500]  # Show part of the document if no match
         txtlst = txt.split()
-        # Iterate the texts for all search terms, convert the terms to <span> for highlighting
+
         for term in inpl:
             for cntr, each in enumerate(txtlst):
                 if each.lower() == term.lstrip('+').lstrip('-'):
                     txtlst[cntr] = f'<span class="srchterm">{each}</span>'
-        # document ts is stored as int. Convert to readable format
-        mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item["docts"]))
-        doclst.append((item["docpath"], mtime, ' '.join(txtlst)))
+
+        mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item["docts"][0]))
+        doclst.append((item["docpath"][0], mtime, ' '.join(txtlst)))
+
     return doclst, doccntr
 
+
 def req_docs(inp: str) -> (list[tuple], str, str, str):
-    """ Accepts user input, query Solr/Opensearch for fulltext/semantic search texts 
-    Returns: List of documents: based on query terms
-             AI generated summary: if the query has questions, or asks for explaination
-             desc: No of documents found based on BM25 search
-             err: In case of errors, "error description" else None
-    """
-    # stop and question words, borrowed from NLTK
+    """Queries Solr/OpenSearch for full-text search results."""
     stp_words = {'i', 'me', 'my', 'myself', 'we', 'our', 'ours',
     'ourselves', 'you', "you're", "you've", "you'll", "you'd", 'your', 'yours', 'yourself', 
     'yourselves', 'he', 'him', 'his', 'himself', 'she', "she's", 'her', 'hers', 'herself', 
@@ -102,92 +96,80 @@ def req_docs(inp: str) -> (list[tuple], str, str, str):
     'hadn', "hadn't", 'hasn', "hasn't", 'haven', "haven't", 'isn', "isn't", 'ma', 'mightn',
      "mightn't", 'mustn', "mustn't", 'needn', "needn't", 'shan', "shan't", 'shouldn', "shouldn't",
     'wasn', "wasn't", 'weren', "weren't", 'won', "won't", 'wouldn', "wouldn't"}
+    
     q_words = {'what', 'which', 'who', 'whom', 'when', 'where', 'whose', 'why', 'how'}
     addl_q_words = {'explain', 'describe', 'elaborate', 'summarize', 'examine', 'evaluate',
                     'analyze', 'clarify', 'diagnose', 'assess' }
 
-    err = None
-    descr = None
-    ft_result = None
-    # If there is a question, enable AI summary
-    ai_summary = bool(inp.endswith('?'))
+    
+    err, descr, ft_result = None, None, None
 
-    linp = ""
-    for cntr, item in enumerate(inp.split()):
-        lwitem = item.lower()
-        # NOT, AND, OR has special meaning in Solr search, below if order is important
-        # if the first word is "question like" then create AI summary, .e.g. describe, explain
-        if cntr==0 and (lwitem in q_words or lwitem in addl_q_words):
-            ai_summary = True
-        elif item in ("AND", "OR", "NOT"):
-            linp = f"{linp} {item}"
-        # ignore stop and question words
-        elif lwitem not in q_words and lwitem not in stp_words:
-            linp = f"{linp} {lwitem}"
+    # ✅ Strip spaces before checking if it's a question
+    inp = inp.strip()
+    ai_summary = inp.endswith('?')  # ✅ Ensure LLM trigger works
+
+    linp = " ".join(inp.split())  # ✅ Normalize input
 
     if linp:
-        params = {'q':f"{linp}", "fl":"doctext+docpath+docts"}
+        solr_url = f"{_FTBASE[0].rstrip('/')}/{_FTINDEX}/{_FTGET}"
+        params = {'q': linp, "df": "doctext", "fl": "doctext,docpath,docts"}
+
+        _lgrdj.info(f"Solr request: {solr_url} with params {params}")
+
         try:
-            resp = requestsession.requests_get("fulltext", params=params)
-        except Exception as exc:
-            _lgrdj.error("Unable to search documents")
-            _lgrdj.error(exc)
-            err = "Unable to search documents. Check the logs files."
-        else:
+            resp = requests.get(solr_url, params=params, timeout=5)
+
             if resp.ok:
                 results = resp.json()
-                if results['response']['numFound'] > 0:
-                    ft_result, doccnt = fmt_ftresults(results, linp)
-                    descr = f"Documents found:{doccnt}"
-                else:
-                    descr = "No document found"
-            else:
-                _lgrdj.error("Error searching documents")
-                _lgrdj.error(resp.text)
-                err = "Error searching documents. Check the logs files."
-    else:
-        err = "Enter good search terms"
+                _lgrdj.info(f"Solr response: {results}")
 
-    # check if question is asked, use AI to summarize
-    # Generate summary only if the BM25 search has results
-    ai_summary = ai_summary and ft_result
-    if ai_summary:
-        ## Get similar texts from VectorDB (OpenSearch)
-        # replace " - grouped search terms
-        btime = datetime.now()
-        # text stored in vectorDB is lowercase text
-        linp = linp.replace('"','')
-        _lgrdj.info("AI summary:%s", linp)
-        qrydata = emdb.get_qry_for_similar_texts(linp)
-        # Get the top 10 hits(files) from the BM25 and filter vectorDB on those file chunks only
-        # "post_filter": {"bool": {"should": [{"match_phrase": { "docpath": "file1"}},
-                             # {"match_phrase": { "docpath": "file2"}}]}}
-        should_lst = [{"match_phrase": {"docpath": item[0]}}
-                      for cntr, item in enumerate(ft_result) if cntr <10]
-        qrydata["post_filter"] = {"bool": {"should": should_lst}}
-        try:
-            resp = requestsession.requests_get("vec", data=qrydata)
-            _lgrdj.info("VectorDB: %s", precisedelta(datetime.now() - btime, minimum_unit="milliseconds"))
-        except Exception as exc:
-            # In case of errors, ignore ai_summary
-            _lgrdj.error("Unable to make a GET for embeddings")
-            _lgrdj.error(exc)
-            ai_summary = False
-        else:
-            if resp.ok and resp.json()["hits"]["total"]["value"] > 0:
-                # Add the context to the input query
-                query_cntxt = f"{linp} "
-                query_cntxt += ' '.join((each["fields"]["docchunk"][0]
-                                      for each in resp.json()["hits"]["hits"]))
-                ai_summary = markdown.markdown(lmdl.mdl_response(query_cntxt))
-                _lgrdj.info("%s took %s", linp, precisedelta(datetime.now() - btime))
+                if "response" in results and "docs" in results["response"]:
+                    docs = results["response"]["docs"]
+
+                    if docs:
+                        ft_result, doccnt = fmt_ftresults(results, linp)
+                        descr = f"Documents found: {doccnt}"
+                    else:
+                        descr = "No document found"
+
+                else:
+                    _lgrdj.error(f"Unexpected Solr response: {results}")
+                    err = "Solr returned an unexpected format."
+
             else:
-                _lgrdj.error("Unable to get similar texts for %s: %s", linp, resp.json())
-                ai_summary = False
+                _lgrdj.error(f"Solr Error: {resp.text}")
+                err = f"Solr Error: {resp.status_code}"
+
+        except requests.exceptions.RequestException as exc:
+            _lgrdj.error(f"Solr request failed: {exc}")
+            err = "Unable to query Solr."
+
+    else:
+        err = "Enter valid search terms"
+
+    # ✅ Ensure AI summary is triggered only if search results exist
+    if ai_summary and ft_result:
+        ai_summary = generate_llm_summary(linp, ft_result)
+    else:
+        ai_summary = None
+
     return ft_result, ai_summary, descr, err
 
+
+def generate_llm_summary(query: str, ft_result: list) -> str:
+    """ Calls LLM to summarize search results """
+    try:
+        context = " ".join([doc[2] for doc in ft_result])  # Extract relevant text
+        query_context = f"Summarize: {query}. Context: {context}"
+        _lgrdj.info(f"Sending to LLM: {query_context[:500]}")  # ✅ Log only first 500 chars
+        return markdown.markdown(lmdl.mdl_response(query_context))  # ✅ Ensure markdown output
+    except Exception as exc:
+        _lgrdj.error(f"LLM summary failed: {exc}")
+        return None  # Return None if LLM fails
+
+
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-BASE_DIR = os.path.dirname(__file__)
+BASE_DIR = os.getcwd()
 
 settings.configure(
     DEBUG=False,
@@ -199,8 +181,7 @@ settings.configure(
         'django.middleware.csrf.CsrfViewMiddleware',
         'django.middleware.clickjacking.XFrameOptionsMiddleware',
     ),
-    TEMPLATES = [
-    {
+    TEMPLATES=[{
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
@@ -210,42 +191,44 @@ settings.configure(
                 'django.contrib.messages.context_processors.messages',
             ],
         },
-    },
-    ],
-    INSTALLED_APPS=(
-    'django.contrib.staticfiles',
-    'django.contrib.contenttypes',
-    ),
-    STATICFILES_DIRS=(
-    os.path.join(BASE_DIR, 'static'),
-    ),
+    }],
+    INSTALLED_APPS=('django.contrib.staticfiles', 'django.contrib.contenttypes'),
+    STATICFILES_DIRS=(os.path.join(BASE_DIR, 'static'),),
     STATIC_URL='/static/',
+    LOGGING={
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'file': {
+                'level': 'DEBUG',
+                'class': 'logging.FileHandler',
+                'filename': 'debug.log',
+            },
+        },
+        'loggers': {
+            'django': {
+                'handlers': ['file'],
+                'level': 'DEBUG',
+                'propagate': True,
+            },
+        },
+    }
 )
 
-
 def index(request):
-    """ Main method for the search page"""
-    descr = None
-    result = None
-    err = None
-    ai_summary = None
+    """Handles search page requests."""
     inp_txt = request.GET.get('inp_txt', '')
-    if inp_txt:
-        result, ai_summary, descr, err = req_docs(inp_txt)
-    context = {"inp_txt": inp_txt, "result": result, "ai_summary": ai_summary,
-               "descr": descr, "err": err}
+    result, ai_summary, descr, err = req_docs(inp_txt) if inp_txt else (None, None, None, None)
+    context = {"inp_txt": inp_txt, "result": result, "ai_summary": ai_summary, "descr": descr, "err": err}
     return render(request, 'home.html', context)
 
-urlpatterns = (
-    path('', index),
-    )
-
+urlpatterns = (path('', index),)
 
 if __name__ == "__main__":
-    _lgrdj = getlgr("searchdocsUI")
     requestsession = RequestsOps()
     lmdl = LMOps()
     emdb = VectorEmbeddings()
     from django.core.management import execute_from_command_line
-    args = ['searchdocuments', 'runserver', '0.0.0.0:8000', '--noreload', '--skip-checks', '--nothreading', '--insecure' ]
+    SERVER_ADDR = "127.0.0.1:" + os.getenv("CDSW_APP_PORT")
+    args = ['searchdocuments', 'runserver', SERVER_ADDR, '--noreload', '--skip-checks', '--nothreading', '--insecure']
     execute_from_command_line(args)

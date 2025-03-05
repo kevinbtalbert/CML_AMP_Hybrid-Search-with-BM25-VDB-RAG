@@ -27,9 +27,9 @@ _CUDA_ARCHTYPE = "Ada"
 # searchdocuments is the name of the collection (index)
 # list all the host:port where the searchdocuments collection shard replicas are present
 # e.g. ["http://<fqdn1>:8983/solr", "http://<fqdn2>:8983/solr",]
-_FTBASE = ["http://192.168.56.103:8983/solr",]
+_FTBASE = ["https://solr.ml-dbfc64d1-783.go01-dem.ylcu-atmi.cloudera.site/solr/",]
 _FTINDEX = "searchdocuments"
-_FTPOST = "update/json/docs"
+_FTPOST = "update/json/docs?commit=true"
 _FTGET = "select"
 # verify certificates?
 _FTTLSVERIFY = False
@@ -39,7 +39,7 @@ _FTTLSVERIFY = False
 # no / at the beginning or the end or URL parts below
 # searchdocs is the name of the index
 # list all the host:port where the searchdocs index shards are present
-_VECBASE = ["http://192.168.56.103:9200",]
+_VECBASE = ["https://opensearch.ml-dbfc64d1-783.go01-dem.ylcu-atmi.cloudera.site/",]
 # indexname Should be lowercase, do not start with _ or -, no special chars
 _VECINDEX = "searchdocuments"
 _VECPOST = "_bulk"
@@ -54,7 +54,7 @@ _MAX_VECSEARCH_RESULTS = 50
 # https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct
 
 # Saved models path
-_MODEL_PATH = "C:\\searchdocuments\\models"
+_MODEL_PATH = "/home/cdsw/models"
 
 _LM_MDL = "HuggingFaceTB/SmolLM2-1.7B-Instruct"
 _LM_MSG_TMPLT = [{"role": "system",
