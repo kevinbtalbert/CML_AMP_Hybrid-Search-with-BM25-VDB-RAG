@@ -120,7 +120,7 @@ tasks:
   - type: start_application
     name: Hybrid Search (Frontend)
     subdomain: hybrid-search-app
-    script: opensearch/run_opensearch.py
+    script: djapp.py
     short_summary: Start Django app frontend
     long_summary: Start Django app frontend application. Remember to enable unauthenticated app access for external access to the UI.
     cpu: 2
