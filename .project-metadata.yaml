@@ -90,16 +90,19 @@ tasks:
     cpu: 2
     memory: 2
 
-  - type: run_session
-    name: Create solr collections
+  - type: create_job
+    name: Create Solr Collections (run first)
+    entity_label: create-solr-collection
     script: solr/04_create_solr_collections.py
-    short_summary: Create solr collections
-    kernel: python3
+    short_summary: Create Solr Collections
     cpu: 2
     memory: 2
+    kernel: python3
+    environment:
+      TASK_TYPE: CREATE/RUN_JOB
 
   - type: create_job
-    name: Ingest Docs from data directory
+    name: Ingest Docs from data directory (run anytime you want to ingest new docs in /data)
     entity_label: ingest-docs
     script: storedocs.py
     arguments: data/
@@ -110,9 +113,9 @@ tasks:
     environment:
       TASK_TYPE: CREATE/RUN_JOB
 
-  - type: run_job
-    entity_label: ingest-docs
-    short_summary: Run Job to ingest docs to Solr and Opensearch
+  # - type: run_job
+  #   entity_label: ingest-docs
+  #   short_summary: Run Job to ingest docs to Solr and Opensearch
 
   - type: start_application
     name: Hybrid Search (Frontend)
