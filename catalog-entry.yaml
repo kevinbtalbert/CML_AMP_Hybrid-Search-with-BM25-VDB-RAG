@@ -7,7 +7,7 @@ entries:
       AMP for deploying Hybrid Search with BM25 and Vector Database with RAG in Cloudera AI
     long_description: |
       AMP for deploying Hybrid Search with BM25 and Vector Database with RAG in Cloudera AI. By default, Solr 9.3.0 and Java 11.0.1 will be installed / used.
-    image_path: "https://raw.githubusercontent.com/kevinbtalbert/CML_AMP_Hybrid-Search-with-BM25-VDB-RAG/main/assets/amp-cover.png"
+    image_path: "https://raw.githubusercontent.com/kevinbtalbert/CML_AMP_Hybrid-Search-with-BM25-VDB-RAG/main/static/catalog-entry.png"
     tags: 
       - Hybrid Search
       - BM25
