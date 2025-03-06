@@ -19,10 +19,19 @@ from django.conf import settings
 from django.urls import path
 from django.shortcuts import render
 
+from django.conf.urls.static import static
+from django.views.static import serve
+from django.urls import re_path
+
 from coreutils import getlgr, RequestsOps, LMOps, VectorEmbeddings
 
 # Allow Django to run in async environments
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+# Add this to your settings configuration
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+BASE_DIR = os.getcwd()
+MEDIA_URL = "/data"
+MEDIA_ROOT = "/home/cdsw/data"  # Ensure your PDFs are stored here
 
 # Configure logger
 _lgrdj = getlgr("searchdocsUI")
@@ -73,7 +82,11 @@ def fmt_ftresults(results: dict, fltr_inp: str) -> (list[tuple], int):
                     txtlst[cntr] = f'<span class="srchterm">{each}</span>'
 
         mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(item["docts"][0]))
-        doclst.append((item["docpath"][0], mtime, ' '.join(txtlst)))
+        # doclst.append((f"/files/{item['docpath'][0]}", mtime, ' '.join(txtlst)))
+        # Remove any leading directory parts from docpath
+        relative_docpath = item['docpath'][0].lstrip('/data')  # Ensure it starts directly from the filename
+        doclst.append((f"/files/{relative_docpath}", mtime, ' '.join(txtlst)))
+
 
     return doclst, doccntr
 
@@ -168,8 +181,7 @@ def generate_llm_summary(query: str, ft_result: list) -> str:
         return None  # Return None if LLM fails
 
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-BASE_DIR = os.getcwd()
+
 
 settings.configure(
     DEBUG=False,
@@ -195,6 +207,8 @@ settings.configure(
     INSTALLED_APPS=('django.contrib.staticfiles', 'django.contrib.contenttypes'),
     STATICFILES_DIRS=(os.path.join(BASE_DIR, 'static'),),
     STATIC_URL='/static/',
+    MEDIA_URL = MEDIA_URL,
+    MEDIA_ROOT = MEDIA_ROOT,
     LOGGING={
         'version': 1,
         'disable_existing_loggers': False,
@@ -222,7 +236,13 @@ def index(request):
     context = {"inp_txt": inp_txt, "result": result, "ai_summary": ai_summary, "descr": descr, "err": err}
     return render(request, 'home.html', context)
 
-urlpatterns = (path('', index),)
+# ✅ Added route to serve files from the 'data' directory
+urlpatterns = [
+    path('', index),
+    re_path(r'^files/(?P<path>.*)$', serve, {'document_root': MEDIA_ROOT}),  
+] + static(MEDIA_URL, document_root=MEDIA_ROOT)
+
+
 
 if __name__ == "__main__":
     requestsession = RequestsOps()
