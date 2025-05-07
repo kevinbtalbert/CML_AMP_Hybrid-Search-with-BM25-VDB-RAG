@@ -106,7 +106,7 @@ tasks:
     name: Ingest Docs from data directory (run anytime you want to ingest new docs in /data)
     entity_label: ingest-docs
     script: storedocs.py
-    arguments: data/
+    arguments: /home/cdsw/data
     short_summary: Ingest Docs from data directory
     cpu: 2
     memory: 4
